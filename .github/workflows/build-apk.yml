@@ -26,20 +26,46 @@ jobs:
           sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018"
           yes | sdkmanager --licenses >/dev/null || true
 
+      
       - name: Build QuickJS for Android arm64
+        shell: bash
         run: |
-          git clone --depth 1 --branch v0.15.1 https://github.com/quickjs-ng/quickjs.git quickjs-ng
+          set -e
+
+          git clone --depth 1 --branch v0.15.1 \
+            https://github.com/quickjs-ng/quickjs.git quickjs-ng
+
           cmake -S quickjs-ng -B quickjs-ng/build \
             -DCMAKE_TOOLCHAIN_FILE="$ANDROID_HOME/ndk/27.2.12479018/build/cmake/android.toolchain.cmake" \
             -DANDROID_ABI=arm64-v8a \
             -DANDROID_PLATFORM=android-24 \
             -DCMAKE_BUILD_TYPE=Release \
             -DQJS_BUILD_LIBC=ON
-          cmake --build quickjs-ng/build --target qjs -j2
+
+          cmake --build quickjs-ng/build --target qjs_exe -j2
+
+          echo "=== Searching for QuickJS executable ==="
+          find quickjs-ng/build -type f -name qjs -print
+
+          QJS_BIN="$(find quickjs-ng/build -type f -name qjs -perm -111 | head -n 1)"
+
+          if [ -z "$QJS_BIN" ]; then
+            echo "ERROR: QuickJS executable was not found."
+            echo "=== Build directory ==="
+            find quickjs-ng/build -maxdepth 4 -type f -print
+            exit 1
+          fi
+
+          echo "QuickJS found at:"
+          echo "$QJS_BIN"
+
           mkdir -p src/assets/bin
-          cp quickjs-ng/build/qjs src/assets/bin/qjs
+          cp "$QJS_BIN" src/assets/bin/qjs
           chmod +x src/assets/bin/qjs
+
+          echo "=== QuickJS binary ==="
           file src/assets/bin/qjs
+          ls -lh src/assets/bin/qjs
 
       - name: Add FFmpeg for Android arm64
         run: |
