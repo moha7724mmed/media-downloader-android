@@ -33,33 +33,64 @@ def tool_resource(name):
     return resources.files("assets").joinpath("bin", name)
 
 
+
 def with_tools(callback):
-    """Run a yt-dlp callback with packaged QuickJS and FFmpeg available."""
+    """Prepare QuickJS and FFmpeg as real filesystem files."""
     try:
-        qjs = tool_resource("qjs")
-        ffmpeg = tool_resource("ffmpeg")
-        with resources.as_file(qjs) as qjs_path, resources.as_file(ffmpeg) as ffmpeg_path:
-            if not qjs_path.exists():
-                raise FileNotFoundError("QuickJS runtime is missing from the APK")
-            if not ffmpeg_path.exists():
-                raise FileNotFoundError("FFmpeg is missing from the APK")
+        qjs_resource = tool_resource("qjs")
+        ffmpeg_resource = tool_resource("ffmpeg")
 
-            for path in (qjs_path, ffmpeg_path):
-                try:
-                    path.chmod(path.stat().st_mode | 0o111)
-                except OSError:
-                    pass
+        runtime_dir = (
+            Path(os.environ.get("FLET_APP_STORAGE_DATA", Path.home()))
+            / "runtime_tools"
+        )
+        runtime_dir.mkdir(parents=True, exist_ok=True)
 
-            common = {
-                "js_runtimes": {"quickjs": {"path": str(qjs_path)}},
-                "remote_components": {"ejs:github"},
-                "ffmpeg_location": str(ffmpeg_path),
-            }
-            return callback(common)
+        qjs_path = runtime_dir / "qjs"
+        ffmpeg_path = runtime_dir / "ffmpeg"
+
+        # Copy packaged binaries to writable filesystem paths.
+        if not qjs_path.exists():
+            with qjs_resource.open("rb") as src, open(qjs_path, "wb") as dst:
+                dst.write(src.read())
+
+        if not ffmpeg_path.exists():
+            with ffmpeg_resource.open("rb") as src, open(ffmpeg_path, "wb") as dst:
+                dst.write(src.read())
+
+        # Android requires executable permission.
+        for path in (qjs_path, ffmpeg_path):
+            try:
+                path.chmod(path.stat().st_mode | 0o111)
+            except OSError:
+                pass
+
+        if not qjs_path.is_file():
+            raise FileNotFoundError(
+                f"QuickJS not found: {qjs_path}"
+            )
+
+        if not ffmpeg_path.is_file():
+            raise FileNotFoundError(
+                f"FFmpeg not found: {ffmpeg_path}"
+            )
+
+        common = {
+            "js_runtimes": {
+                "quickjs": {
+                    "path": str(qjs_path)
+                }
+            },
+            "remote_components": {"ejs:github"},
+            "ffmpeg_location": str(ffmpeg_path),
+        }
+
+        return callback(common)
+
     except Exception as ex:
-        raise RuntimeError(f"Runtime tools initialization failed: {ex}") from ex
-
-
+        raise RuntimeError(
+            f"Runtime tools initialization failed: {ex}"
+        ) from ex
 async def main(page: ft.Page):
     page.title = APP_NAME
     page.theme_mode = ft.ThemeMode.DARK
@@ -163,8 +194,7 @@ async def main(page: ft.Page):
             "quiet": True,
             "no_warnings": True,
             "noplaylist": True,
-            "js_runtimes": {"quickjs": {"path": None}},
-            "remote_components": {"ejs:github"},
+            
         }
         if base:
             opts.update(base)
