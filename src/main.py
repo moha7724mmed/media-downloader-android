@@ -4,6 +4,7 @@ import os
 import re
 import threading
 from pathlib import Path
+from urllib.parse import urlparse
 
 import flet as ft
 import yt_dlp
@@ -304,7 +305,7 @@ async def main(page: ft.Page):
                     return Path(ydl.prepare_filename(info))
 
             try:
-                prepared = with_qjs(run)
+                prepared, info = with_tools(run)
                 candidates = list(DOWNLOAD_DIR.glob(f"{base_name}.*"))
                 if prepared.exists():
                     final_path = prepared
